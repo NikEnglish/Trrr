@@ -33,41 +33,45 @@
 <body>
   <h1>Мобильная трансляция экрана</h1>
   <button id="start-share">Начать трансляцию</button>
+  <button id="switch-camera" style="display:none;">Переключить камеру</button>
   <p>Скопируйте ссылку и отправьте зрителям: <input type="text" id="link" readonly></p>
   <video id="video" autoplay playsinline controls></video>
 
   <script>
     const startButton = document.getElementById("start-share");
+    const switchCameraButton = document.getElementById("switch-camera");
     const linkInput = document.getElementById("link");
     const videoElement = document.getElementById("video");
 
     let peerConnection;
+    let stream;
+    let currentCamera = "user"; // Текущая камера ("user" - фронтальная, "environment" - задняя)
     const servers = {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     };
 
+    // Запуск трансляции
     async function startScreenShare() {
       try {
-        let stream;
-        // Попробуем захватить экран
         if (navigator.mediaDevices.getDisplayMedia) {
+          // Попробуем транслировать экран
           stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         } else {
-          // Если экран не поддерживается, переключаемся на камеру
+          // Если экран не поддерживается, переходим на камеру
           alert("Ваш браузер не поддерживает захват экрана. Будет использоваться камера.");
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } });
+          switchCameraButton.style.display = "block"; // Показываем кнопку переключения камеры
         }
 
         videoElement.srcObject = stream;
 
-        // Устанавливаем WebRTC соединение
         peerConnection = new RTCPeerConnection(servers);
         stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        // Ссылка для подключения зрителей
+        // Создаем ссылку для зрителей
         const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
         linkInput.value = link;
         alert("Скопируйте ссылку и отправьте её зрителям!");
@@ -77,6 +81,29 @@
       }
     }
 
+    // Переключение камеры
+    async function switchCamera() {
+      if (!stream) return;
+
+      // Останавливаем текущие треки
+      stream.getTracks().forEach(track => track.stop());
+
+      // Меняем текущую камеру
+      currentCamera = currentCamera === "user" ? "environment" : "user";
+
+      // Запрашиваем новую камеру
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } });
+      videoElement.srcObject = stream;
+
+      // Пересоздаем стрим в PeerConnection
+      const senders = peerConnection.getSenders();
+      const videoSender = senders.find(sender => sender.track.kind === "video");
+      if (videoSender) {
+        videoSender.replaceTrack(stream.getVideoTracks()[0]);
+      }
+    }
+
+    // Подключение зрителей
     async function joinStream() {
       const params = new URLSearchParams(window.location.search);
       if (params.has("offer")) {
@@ -93,8 +120,8 @@
       }
     }
 
-    // Событие для старта трансляции
     startButton.addEventListener("click", startScreenShare);
+    switchCameraButton.addEventListener("click", switchCamera);
 
     // Если это зритель
     if (window.location.search.includes("offer")) {
