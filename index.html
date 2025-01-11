@@ -21,51 +21,60 @@
       cursor: pointer;
       margin: 10px;
     }
+    input {
+      width: 80%;
+      padding: 10px;
+      font-size: 16px;
+      text-align: center;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
   <h1>Трансляция экрана</h1>
   <button id="start-share">Начать трансляцию</button>
   <p>Скопируй ссылку и отправь её зрителям: <input type="text" id="link" readonly></p>
-  <video autoplay playsinline controls></video>
-  
+  <video id="video" autoplay playsinline controls></video>
+
   <script>
     const startButton = document.getElementById("start-share");
     const linkInput = document.getElementById("link");
-    const videoElement = document.querySelector("video");
-    
+    const videoElement = document.getElementById("video");
+
     let peerConnection;
     const servers = {
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }] // STUN-сервер для соединения
     };
 
-    // Начать трансляцию
+    // Начало трансляции
     startButton.addEventListener("click", async () => {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      videoElement.srcObject = stream;
+      videoElement.srcObject = stream; // Показываем свой экран
 
+      // WebRTC подключение
       peerConnection = new RTCPeerConnection(servers);
 
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream);
-      });
+      // Добавляем видеопоток в PeerConnection
+      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
+      // Создаем SDP Offer
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
 
-      // Ссылка для зрителей
+      // Создаем ссылку
       const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
       linkInput.value = link;
+      alert("Ссылка создана! Отправьте её зрителям.");
     });
 
-    // Зрители принимают сигнал
+    // Подключение зрителей
     async function joinStream() {
       const params = new URLSearchParams(window.location.search);
       if (params.has("offer")) {
         const offer = JSON.parse(atob(params.get("offer")));
-
         peerConnection = new RTCPeerConnection(servers);
 
+        // Прием видеопотока от транслятора
         peerConnection.ontrack = (event) => {
           videoElement.srcObject = event.streams[0];
         };
@@ -75,9 +84,9 @@
         await peerConnection.setLocalDescription(answer);
       }
     }
-    
-    // Если открывается ссылка зрителем
-    if (window.location.search) {
+
+    // Если это зритель, запускаем прием данных
+    if (window.location.search.includes("offer")) {
       joinStream();
     }
   </script>
