@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Screen Sharing</title>
+  <title>Mobile Screen Sharing</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -31,9 +31,9 @@
   </style>
 </head>
 <body>
-  <h1>Трансляция экрана</h1>
+  <h1>Мобильная трансляция экрана</h1>
   <button id="start-share">Начать трансляцию</button>
-  <p>Скопируй ссылку и отправь её зрителям: <input type="text" id="link" readonly></p>
+  <p>Скопируйте ссылку и отправьте зрителям: <input type="text" id="link" readonly></p>
   <video id="video" autoplay playsinline controls></video>
 
   <script>
@@ -43,38 +43,46 @@
 
     let peerConnection;
     const servers = {
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }] // STUN-сервер для соединения
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     };
 
-    // Начало трансляции
-    startButton.addEventListener("click", async () => {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      videoElement.srcObject = stream; // Показываем свой экран
+    async function startScreenShare() {
+      try {
+        let stream;
+        // Попробуем захватить экран
+        if (navigator.mediaDevices.getDisplayMedia) {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        } else {
+          // Если экран не поддерживается, переключаемся на камеру
+          alert("Ваш браузер не поддерживает захват экрана. Будет использоваться камера.");
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
 
-      // WebRTC подключение
-      peerConnection = new RTCPeerConnection(servers);
+        videoElement.srcObject = stream;
 
-      // Добавляем видеопоток в PeerConnection
-      stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+        // Устанавливаем WebRTC соединение
+        peerConnection = new RTCPeerConnection(servers);
+        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-      // Создаем SDP Offer
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
 
-      // Создаем ссылку
-      const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
-      linkInput.value = link;
-      alert("Ссылка создана! Отправьте её зрителям.");
-    });
+        // Ссылка для подключения зрителей
+        const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
+        linkInput.value = link;
+        alert("Скопируйте ссылку и отправьте её зрителям!");
+      } catch (error) {
+        console.error("Ошибка при запуске трансляции:", error);
+        alert("Не удалось захватить экран или камеру. Попробуйте другой браузер.");
+      }
+    }
 
-    // Подключение зрителей
     async function joinStream() {
       const params = new URLSearchParams(window.location.search);
       if (params.has("offer")) {
         const offer = JSON.parse(atob(params.get("offer")));
         peerConnection = new RTCPeerConnection(servers);
 
-        // Прием видеопотока от транслятора
         peerConnection.ontrack = (event) => {
           videoElement.srcObject = event.streams[0];
         };
@@ -85,7 +93,10 @@
       }
     }
 
-    // Если это зритель, запускаем прием данных
+    // Событие для старта трансляции
+    startButton.addEventListener("click", startScreenShare);
+
+    // Если это зритель
     if (window.location.search.includes("offer")) {
       joinStream();
     }
