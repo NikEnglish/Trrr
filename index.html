@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Трансляция экрана</title>
+  <title>Трансляция с камеры</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
@@ -13,19 +13,19 @@
   </style>
 </head>
 <body>
-  <h1>Трансляция экрана</h1>
+  <h1>Трансляция с камеры</h1>
   <div>
-    <button id="start-screen">Начать трансляцию</button>
+    <button id="start-camera">Начать трансляцию</button>
     <button id="stop-stream" style="display:none;">Остановить трансляцию</button>
   </div>
-  <p>Ваша ID для подключения: <input type="text" id="stream-id" readonly></p>
+  <p>Ваш ID для подключения: <input type="text" id="stream-id" readonly></p>
   <p>Зрители могут использовать ваш ID:</p>
   <input type="text" id="remote-id" placeholder="Введите ID трансляции">
   <button id="join-stream">Присоединиться</button>
   <video id="video" autoplay playsinline controls></video>
 
   <script>
-    const startButton = document.getElementById('start-screen');
+    const startButton = document.getElementById('start-camera');
     const stopButton = document.getElementById('stop-stream');
     const joinButton = document.getElementById('join-stream');
     const streamIdInput = document.getElementById('stream-id');
@@ -42,21 +42,21 @@
       streamIdInput.value = id;
     });
 
-    // Начало трансляции экрана
+    // Начало трансляции с камеры
     startButton.addEventListener('click', async () => {
       try {
-        mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         videoElement.srcObject = mediaStream;
 
         // Слушаем входящие звонки
         peer.on('call', (incomingCall) => {
-          incomingCall.answer(mediaStream); // Отправляем экран
+          incomingCall.answer(mediaStream); // Отправляем камеру
         });
 
         startButton.style.display = 'none';
         stopButton.style.display = 'inline';
       } catch (err) {
-        alert('Ошибка захвата экрана: ' + err.message);
+        alert('Ошибка доступа к камере: ' + err.message);
       }
     });
 
