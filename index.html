@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Sharing</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    video {
+      max-width: 100%;
+      max-height: 500px;
+      border: 2px solid black;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Трансляция экрана</h1>
+  <button id="start-share">Начать трансляцию</button>
+  <p>Скопируй ссылку и отправь её зрителям: <input type="text" id="link" readonly></p>
+  <video autoplay playsinline controls></video>
+  
+  <script>
+    const startButton = document.getElementById("start-share");
+    const linkInput = document.getElementById("link");
+    const videoElement = document.querySelector("video");
+    
+    let peerConnection;
+    const servers = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    // Начать трансляцию
+    startButton.addEventListener("click", async () => {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      videoElement.srcObject = stream;
+
+      peerConnection = new RTCPeerConnection(servers);
+
+      stream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, stream);
+      });
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      // Ссылка для зрителей
+      const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
+      linkInput.value = link;
+    });
+
+    // Зрители принимают сигнал
+    async function joinStream() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("offer")) {
+        const offer = JSON.parse(atob(params.get("offer")));
+
+        peerConnection = new RTCPeerConnection(servers);
+
+        peerConnection.ontrack = (event) => {
+          videoElement.srcObject = event.streams[0];
+        };
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+      }
+    }
+    
+    // Если открывается ссылка зрителем
+    if (window.location.search) {
+      joinStream();
+    }
+  </script>
+</body>
+</html>
