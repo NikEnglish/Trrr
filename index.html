@@ -3,130 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mobile Screen Sharing</title>
+  <title>Трансляция экрана</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 20px;
-    }
-    video {
-      max-width: 100%;
-      max-height: 500px;
-      border: 2px solid black;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      margin: 10px;
-    }
-    input {
-      width: 80%;
-      padding: 10px;
-      font-size: 16px;
-      text-align: center;
-      margin-top: 20px;
-    }
+    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+    video { max-width: 100%; max-height: 500px; border: 2px solid black; margin-top: 10px; }
+    button, input { padding: 10px; margin: 10px; font-size: 16px; }
+    input { width: 80%; }
   </style>
 </head>
 <body>
-  <h1>Мобильная трансляция экрана</h1>
-  <button id="start-share">Начать трансляцию</button>
-  <button id="switch-camera" style="display:none;">Переключить камеру</button>
-  <p>Скопируйте ссылку и отправьте зрителям: <input type="text" id="link" readonly></p>
+  <h1>Трансляция экрана</h1>
+  <div>
+    <button id="start-screen">Начать трансляцию</button>
+    <button id="stop-stream" style="display:none;">Остановить трансляцию</button>
+  </div>
+  <p>Ваша ID для подключения: <input type="text" id="stream-id" readonly></p>
+  <p>Зрители могут использовать ваш ID:</p>
+  <input type="text" id="remote-id" placeholder="Введите ID трансляции">
+  <button id="join-stream">Присоединиться</button>
   <video id="video" autoplay playsinline controls></video>
 
   <script>
-    const startButton = document.getElementById("start-share");
-    const switchCameraButton = document.getElementById("switch-camera");
-    const linkInput = document.getElementById("link");
-    const videoElement = document.getElementById("video");
+    const startButton = document.getElementById('start-screen');
+    const stopButton = document.getElementById('stop-stream');
+    const joinButton = document.getElementById('join-stream');
+    const streamIdInput = document.getElementById('stream-id');
+    const remoteIdInput = document.getElementById('remote-id');
+    const videoElement = document.getElementById('video');
 
-    let peerConnection;
-    let stream;
-    let currentCamera = "user"; // Текущая камера ("user" - фронтальная, "environment" - задняя)
-    const servers = {
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-    };
+    const peer = new Peer(); // Инициализация PeerJS
 
-    // Запуск трансляции
-    async function startScreenShare() {
+    let mediaStream; // Переменная для потока
+    let call; // Переменная для соединения
+
+    // Генерация ID при загрузке страницы
+    peer.on('open', (id) => {
+      streamIdInput.value = id;
+    });
+
+    // Начало трансляции экрана
+    startButton.addEventListener('click', async () => {
       try {
-        if (navigator.mediaDevices.getDisplayMedia) {
-          // Попробуем транслировать экран
-          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        } else {
-          // Если экран не поддерживается, переходим на камеру
-          alert("Ваш браузер не поддерживает захват экрана. Будет использоваться камера.");
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } });
-          switchCameraButton.style.display = "block"; // Показываем кнопку переключения камеры
-        }
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        videoElement.srcObject = mediaStream;
 
-        videoElement.srcObject = stream;
+        // Слушаем входящие звонки
+        peer.on('call', (incomingCall) => {
+          incomingCall.answer(mediaStream); // Отправляем экран
+        });
 
-        peerConnection = new RTCPeerConnection(servers);
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-
-        // Создаем ссылку для зрителей
-        const link = `${window.location.href}?offer=${btoa(JSON.stringify(offer))}`;
-        linkInput.value = link;
-        alert("Скопируйте ссылку и отправьте её зрителям!");
-      } catch (error) {
-        console.error("Ошибка при запуске трансляции:", error);
-        alert("Не удалось захватить экран или камеру. Попробуйте другой браузер.");
+        startButton.style.display = 'none';
+        stopButton.style.display = 'inline';
+      } catch (err) {
+        alert('Ошибка захвата экрана: ' + err.message);
       }
-    }
+    });
 
-    // Переключение камеры
-    async function switchCamera() {
-      if (!stream) return;
+    // Остановка трансляции
+    stopButton.addEventListener('click', () => {
+      mediaStream.getTracks().forEach(track => track.stop());
+      startButton.style.display = 'inline';
+      stopButton.style.display = 'none';
+    });
 
-      // Останавливаем текущие треки
-      stream.getTracks().forEach(track => track.stop());
-
-      // Меняем текущую камеру
-      currentCamera = currentCamera === "user" ? "environment" : "user";
-
-      // Запрашиваем новую камеру
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera } });
-      videoElement.srcObject = stream;
-
-      // Пересоздаем стрим в PeerConnection
-      const senders = peerConnection.getSenders();
-      const videoSender = senders.find(sender => sender.track.kind === "video");
-      if (videoSender) {
-        videoSender.replaceTrack(stream.getVideoTracks()[0]);
+    // Подключение к трансляции другого пользователя
+    joinButton.addEventListener('click', () => {
+      const remoteId = remoteIdInput.value.trim();
+      if (!remoteId) {
+        alert('Введите ID трансляции.');
+        return;
       }
-    }
 
-    // Подключение зрителей
-    async function joinStream() {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has("offer")) {
-        const offer = JSON.parse(atob(params.get("offer")));
-        peerConnection = new RTCPeerConnection(servers);
+      call = peer.call(remoteId, null); // Звоним на указанный ID
+      call.on('stream', (remoteStream) => {
+        videoElement.srcObject = remoteStream; // Отображаем полученный стрим
+      });
 
-        peerConnection.ontrack = (event) => {
-          videoElement.srcObject = event.streams[0];
-        };
+      call.on('error', (err) => {
+        alert('Ошибка соединения: ' + err.message);
+      });
+    });
 
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-      }
-    }
-
-    startButton.addEventListener("click", startScreenShare);
-    switchCameraButton.addEventListener("click", switchCamera);
-
-    // Если это зритель
-    if (window.location.search.includes("offer")) {
-      joinStream();
-    }
+    // Если ошибка
+    peer.on('error', (err) => {
+      alert('Ошибка PeerJS: ' + err.message);
+    });
   </script>
 </body>
 </html>
